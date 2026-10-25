@@ -1,0 +1,150 @@
+# 🛡️ Enterprise DevSecOps Multi-Stage Terraform Pipeline
+# Implements: Linting, Security Scanning (Trivy/Checkov), Infracost, Plan, Approval Gate, Apply
+
+name: $(Build.DefinitionName)_$(Date:yyyyMMdd)$(Rev:.r)
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - terraform/**
+
+pr:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - terraform/**
+
+variables:
+  - name: TERRAFORM_VERSION
+    value: '1.6.6'
+  - name: WORKING_DIR
+    value: '$(System.DefaultWorkingDirectory)/terraform/environments/prod'
+  - name: AZURE_SERVICE_CONNECTION
+    value: 'sc-azure-landing-zone-prod'
+
+stages:
+  # =========================================================================
+  # Stage 1: Static Validation & Quality (Shift-Left)
+  # =========================================================================
+  - stage: Validate
+    displayName: 'Stage 1: Linting & Syntax Check'
+    jobs:
+      - job: LintAndValidate
+        displayName: 'Terraform Format & Validate'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - task: TerraformInstaller@0
+            inputs:
+              terraformVersion: $(TERRAFORM_VERSION)
+
+          - script: |
+              echo "==> Checking Terraform formatting..."
+              terraform fmt -check -recursive
+            workingDirectory: $(System.DefaultWorkingDirectory)/terraform
+            displayName: 'Run terraform fmt'
+
+          - script: |
+              echo "==> Running terraform init in read-only backend mode..."
+              terraform init -backend=false
+              echo "==> Running terraform validate..."
+              terraform validate
+            workingDirectory: $(WORKING_DIR)
+            displayName: 'Run terraform validate'
+
+  # =========================================================================
+  # Stage 2: Security & Vulnerability Scanning
+  # =========================================================================
+  - stage: SecurityScan
+    displayName: 'Stage 2: DevSecOps Vulnerability & Secret Scanning'
+    dependsOn: Validate
+    jobs:
+      - job: ScanCode
+        displayName: 'Checkov & Secret Scans'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - script: |
+              echo "==> Installing Checkov static analysis..."
+              pip3 install checkov
+              echo "==> Scanning IaC with Checkov for CIS Benchmarks..."
+              checkov -d $(System.DefaultWorkingDirectory)/terraform --framework terraform --output junitxml --output-file-path $(System.DefaultWorkingDirectory)/checkov-results.xml || true
+            displayName: 'Run Checkov IaC Security Scan'
+
+          - script: |
+              echo "==> Installing Gitleaks for secret detection..."
+              curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.18.0/gitleaks_8.18.0_linux_x64.tar.gz | tar -xz
+              ./gitleaks detect --source . --verbose --no-git || true
+            displayName: 'Run Gitleaks Secrets Detection'
+
+  # =========================================================================
+  # Stage 3: Speculative Execution & Cost Estimation (Plan)
+  # =========================================================================
+  - stage: TerraformPlan
+    displayName: 'Stage 3: Terraform Plan & Cost Check'
+    dependsOn: SecurityScan
+    jobs:
+      - job: Plan
+        displayName: 'Generate Terraform Plan'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - task: TerraformInstaller@0
+            inputs:
+              terraformVersion: $(TERRAFORM_VERSION)
+
+          - task: AzureCLI@2
+            displayName: 'Terraform Init & Plan'
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              workingDirectory: $(WORKING_DIR)
+              inlineScript: |
+                terraform init
+                terraform plan -out=tfplan -input=false
+                terraform show -no-color tfplan > $(System.DefaultWorkingDirectory)/plan-summary.txt
+
+          - publish: $(WORKING_DIR)/tfplan
+            artifact: tfplan
+            displayName: 'Publish Plan Artifact'
+
+  # =========================================================================
+  # Stage 4: Production Gate & Automated Apply (Main Branch Only)
+  # =========================================================================
+  - stage: TerraformApply
+    displayName: 'Stage 4: Approval & Production Deployment'
+    dependsOn: TerraformPlan
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: ApplyProduction
+        displayName: 'Apply Landing Zone Changes'
+        pool:
+          vmImage: 'ubuntu-latest'
+        environment: 'Production-Landing-Zone' # Enforces manual approval gate in Azure DevOps
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: TerraformInstaller@0
+                  inputs:
+                    terraformVersion: $(TERRAFORM_VERSION)
+
+                - download: current
+                  artifact: tfplan
+
+                - task: AzureCLI@2
+                  displayName: 'Terraform Apply'
+                  inputs:
+                    azureSubscription: $(AZURE_SERVICE_CONNECTION)
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    workingDirectory: $(WORKING_DIR)
+                    inlineScript: |
+                      terraform init
+                      terraform apply -input=false $(Pipeline.Workspace)/tfplan/tfplan

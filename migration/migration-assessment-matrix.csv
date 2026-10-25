@@ -1,0 +1,9 @@
+AppID,AppName,Tier,BusinessDomain,CurrentHostType,SourceOS,CurrentSpecs,TargetStrategy,TargetAzureService,TargetSKU,StorageGB,DBType,MigrationWave,CutoverWindowHours
+APP-001,CustomerPortal,Tier 1,E-Commerce,VMware VM,RHEL 8.4,"8 vCPU / 32 GB",Replatform,Azure App Service (Linux),P2v3,500,Azure SQL MI,Wave 3,4
+APP-002,BillingEngine,Tier 1,Finance,Physical Server,Windows Server 2019,"16 vCPU / 64 GB",Rehost,Azure IaaS VM (Zone-Redundant),Standard_E16s_v5,2000,SQL Server Enterprise,Wave 3,4
+APP-003,CRMIntegrationAPI,Tier 2,Sales,VMware VM,Ubuntu 20.04,"4 vCPU / 16 GB",Refactor,Azure Kubernetes Service (AKS),Standard_D4s_v5,100,PostgreSQL Flexible Server,Wave 2,2
+APP-004,EmployeeHRMS,Tier 2,Human Resources,VMware VM,Windows Server 2016,"4 vCPU / 16 GB",Replatform,Azure App Service,P1v3,150,Azure SQL Database,Wave 2,2
+APP-005,LogCollectorProxy,Tier 3,IT Operations,VMware VM,Ubuntu 22.04,"2 vCPU / 8 GB",Rehost,Azure IaaS VM,Standard_D2s_v5,50,None,Wave 0,1
+APP-006,InternalDocumentSearch,Tier 3,Corporate,VMware VM,Windows Server 2012 R2,"4 vCPU / 16 GB",Rehost & Upgrade,Azure IaaS VM (Upgraded to 2022),Standard_D4s_v5,300,None,Wave 1,2
+APP-007,ReportingAnalyticsWarehouse,Tier 2,BI & Analytics,VMware VM,Windows Server 2019,"32 vCPU / 128 GB",Replatform,Azure Synapse / Fabric,DW1000c,15000,Dedicated SQL Pool,Wave 2,6
+APP-008,LegacyColdArchive,Tier 4,Compliance,Physical SAN,Storage Appliance,"N/A",Retire & Archive,Azure Storage (Archive Tier),Blob Archive,45000,None,Wave 1,0

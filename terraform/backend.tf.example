@@ -1,0 +1,12 @@
+# Example Remote State Configuration with Azure Blob Storage
+# Uses native Azure Blob Lease Locking, Encrypted at Rest, authenticated via Managed Identity.
+
+terraform {
+  backend "azurerm" {
+    resource_group_name  = "rg-terraform-state-prod"
+    storage_account_name = "sttfstateprod001"
+    container_name       = "tfstate"
+    key                  = "landing-zones/prod.terraform.tfstate"
+    use_azuread_auth     = true
+  }
+}
